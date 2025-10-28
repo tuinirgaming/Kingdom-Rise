@@ -25,6 +25,14 @@
         .resource-btn:active {
             transform: scale(0.95);
         }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        .battle-shake {
+            animation: shake 0.3s ease-in-out;
+        }
     </style>
 </head>
 <body class="no-tap-highlight">
@@ -53,7 +61,6 @@
 
             const saved = loadGame();
 
-            // Balanced starting resources
             const [gold, setGold] = useState(saved?.gold || 300);
             const [wood, setWood] = useState(saved?.wood || 200);
             const [stone, setStone] = useState(saved?.stone || 150);
@@ -64,6 +71,8 @@
             const [kingdomLevel, setKingdomLevel] = useState(saved?.kingdomLevel || 1);
             const [totalPower, setTotalPower] = useState(saved?.totalPower || 0);
             const [clickPower, setClickPower] = useState(saved?.clickPower || { gold: 3, wood: 2, stone: 2, food: 3 });
+            const [wins, setWins] = useState(saved?.wins || 0);
+            const [losses, setLosses] = useState(saved?.losses || 0);
             
             const [buildings, setBuildings] = useState(saved?.buildings || {
                 townHall: { level: 1, maxLevel: 10 },
@@ -78,10 +87,62 @@
                 market: { level: 0, maxLevel: 5 },
             });
 
+            // Troop system
+            const [troops, setTroops] = useState(saved?.troops || {
+                archer: { count: 0, level: 1 },
+                spearman: { count: 0, level: 1 },
+                swordsman: { count: 0, level: 1 },
+                horseman: { count: 0, level: 1 },
+                catapult: { count: 0, level: 1 },
+            });
+
             const [activeTab, setActiveTab] = useState('resources');
             const [showStory, setShowStory] = useState(!saved);
+            const [battleModal, setBattleModal] = useState(null);
 
-            // BALANCED costs with MODERATE production
+            const troopInfo = {
+                archer: {
+                    name: '🏹 Archer',
+                    desc: 'Ranged unit with high attack.',
+                    baseCost: { gold: 50, wood: 30, food: 20 },
+                    baseStats: { attack: 12, defense: 5, health: 40 },
+                    trainTime: 2,
+                    minBarracks: 1
+                },
+                spearman: {
+                    name: '🛡️ Spearman',
+                    desc: 'Defensive unit with high defense.',
+                    baseCost: { gold: 40, wood: 25, food: 15 },
+                    baseStats: { attack: 8, defense: 15, health: 60 },
+                    trainTime: 2,
+                    minBarracks: 1
+                },
+                swordsman: {
+                    name: '⚔️ Swordsman',
+                    desc: 'Balanced melee fighter.',
+                    baseCost: { gold: 60, wood: 20, food: 25 },
+                    baseStats: { attack: 15, defense: 10, health: 50 },
+                    trainTime: 3,
+                    minBarracks: 2
+                },
+                horseman: {
+                    name: '🐎 Horseman',
+                    desc: 'Fast cavalry with high attack.',
+                    baseCost: { gold: 100, wood: 40, food: 40 },
+                    baseStats: { attack: 20, defense: 8, health: 55 },
+                    trainTime: 4,
+                    minBarracks: 4
+                },
+                catapult: {
+                    name: '🎯 Catapult',
+                    desc: 'Siege weapon with massive damage.',
+                    baseCost: { gold: 200, wood: 150, food: 50 },
+                    baseStats: { attack: 40, defense: 5, health: 70 },
+                    trainTime: 6,
+                    minBarracks: 6
+                }
+            };
+
             const buildingInfo = {
                 townHall: {
                     name: '🏰 Town Hall',
@@ -133,7 +194,7 @@
                 },
                 barracks: {
                     name: '⚔️ Barracks',
-                    desc: 'Train troops to defend your kingdom.',
+                    desc: 'Train and upgrade troops. Higher level unlocks stronger units.',
                     category: 'military',
                     baseCost: { gold: 120, wood: 70, stone: 80 },
                     production: {},
@@ -141,7 +202,7 @@
                 },
                 wall: {
                     name: '🛡️ Wall',
-                    desc: 'Increases defense rating.',
+                    desc: 'Increases defense rating by 10% per level.',
                     category: 'military',
                     baseCost: { gold: 80, wood: 50, stone: 100 },
                     production: {},
@@ -149,7 +210,7 @@
                 },
                 tower: {
                     name: '🗼 Watch Tower',
-                    desc: 'Provides additional defense.',
+                    desc: 'Provides defense bonus and reveals enemy info.',
                     category: 'military',
                     baseCost: { gold: 100, wood: 40, stone: 80 },
                     production: {},
@@ -165,13 +226,12 @@
                 }
             };
 
-            // Save game
             useEffect(() => {
                 const save = () => {
                     try {
                         localStorage.setItem('kingdomRiseGame', JSON.stringify({
                             gold, wood, stone, food, population, maxPopulation,
-                            kingdomLevel, totalPower, buildings, clickPower
+                            kingdomLevel, totalPower, buildings, clickPower, troops, wins, losses
                         }));
                     } catch (e) {
                         console.error('Save failed:', e);
@@ -179,9 +239,8 @@
                 };
                 const interval = setInterval(save, 3000);
                 return () => clearInterval(interval);
-            }, [gold, wood, stone, food, population, maxPopulation, kingdomLevel, totalPower, buildings, clickPower]);
+            }, [gold, wood, stone, food, population, maxPopulation, kingdomLevel, totalPower, buildings, clickPower, troops, wins, losses]);
 
-            // Resource production
             useEffect(() => {
                 const interval = setInterval(() => {
                     let goldGen = 0;
@@ -222,11 +281,18 @@
                 Object.entries(buildings).forEach(([key, building]) => {
                     power += building.level * 10;
                 });
+                
+                // Add military power
+                Object.entries(troops).forEach(([type, troop]) => {
+                    const info = troopInfo[type];
+                    const stats = getTroopStats(type);
+                    power += troop.count * (stats.attack + stats.defense) * 0.5;
+                });
+                
                 power += kingdomLevel * 100;
                 setTotalPower(power);
-            }, [buildings, kingdomLevel]);
+            }, [buildings, kingdomLevel, troops]);
 
-            // Manual resource gathering - bonus reduced for balance
             const gatherResource = (type) => {
                 switch(type) {
                     case 'gold':
@@ -249,7 +315,6 @@
                 const info = buildingInfo[buildingKey];
                 const level = building.level;
                 
-                // Exponential scaling - gets MUCH harder as you level up
                 const multiplier = Math.pow(1.6, level);
                 return {
                     gold: Math.floor(info.baseCost.gold * multiplier),
@@ -259,9 +324,10 @@
             };
 
             const canAfford = (cost) => {
-                return gold >= cost.gold && 
+                return gold >= (cost.gold || 0) && 
                        wood >= (cost.wood || 0) && 
-                       stone >= (cost.stone || 0);
+                       stone >= (cost.stone || 0) &&
+                       food >= (cost.food || 0);
             };
 
             const canUpgrade = (buildingKey) => {
@@ -299,7 +365,6 @@
 
             const recruitWorker = () => {
                 if (population >= maxPopulation) return;
-                // Recruitment gets more expensive as population grows
                 const recruitCost = 30 + (population * 15);
                 if (food < recruitCost) return;
                 
@@ -309,6 +374,186 @@
 
             const getRecruitCost = () => {
                 return 30 + (population * 15);
+            };
+
+            // Troop functions
+            const getTroopStats = (troopType) => {
+                const info = troopInfo[troopType];
+                const level = troops[troopType].level;
+                return {
+                    attack: Math.floor(info.baseStats.attack * (1 + (level - 1) * 0.3)),
+                    defense: Math.floor(info.baseStats.defense * (1 + (level - 1) * 0.3)),
+                    health: Math.floor(info.baseStats.health * (1 + (level - 1) * 0.2))
+                };
+            };
+
+            const canTrainTroop = (troopType) => {
+                const info = troopInfo[troopType];
+                if (buildings.barracks.level < info.minBarracks) return false;
+                return canAfford(info.baseCost);
+            };
+
+            const trainTroop = (troopType) => {
+                if (!canTrainTroop(troopType)) return;
+                
+                const cost = troopInfo[troopType].baseCost;
+                setGold(g => g - cost.gold);
+                setWood(w => w - (cost.wood || 0));
+                setFood(f => f - cost.food);
+                
+                setTroops(prev => ({
+                    ...prev,
+                    [troopType]: {
+                        ...prev[troopType],
+                        count: prev[troopType].count + 1
+                    }
+                }));
+            };
+
+            const getTroopUpgradeCost = (troopType) => {
+                const level = troops[troopType].level;
+                return {
+                    gold: 100 * level * 2,
+                    stone: 50 * level,
+                    food: 80 * level
+                };
+            };
+
+            const canUpgradeTroop = (troopType) => {
+                if (troops[troopType].level >= 5) return false;
+                const cost = getTroopUpgradeCost(troopType);
+                return canAfford(cost);
+            };
+
+            const upgradeTroop = (troopType) => {
+                if (!canUpgradeTroop(troopType)) return;
+                
+                const cost = getTroopUpgradeCost(troopType);
+                setGold(g => g - cost.gold);
+                setStone(s => s - cost.stone);
+                setFood(f => f - cost.food);
+                
+                setTroops(prev => ({
+                    ...prev,
+                    [troopType]: {
+                        ...prev[troopType],
+                        level: prev[troopType].level + 1
+                    }
+                }));
+            };
+
+            // Battle system
+            const generateEnemy = () => {
+                const enemyNames = ['Goblin Raiders', 'Bandit Camp', 'Rival Kingdom', 'Orc Horde', 'Dark Legion'];
+                const name = enemyNames[Math.floor(Math.random() * enemyNames.length)];
+                
+                // Enemy power scales with player
+                const powerVariation = 0.7 + Math.random() * 0.6; // 70% to 130%
+                const enemyPower = totalPower * powerVariation;
+                
+                // Generate enemy troops
+                const enemyTroops = {};
+                const troopTypes = Object.keys(troopInfo);
+                const availableTroops = troopTypes.filter(t => troopInfo[t].minBarracks <= buildings.barracks.level);
+                
+                availableTroops.forEach(type => {
+                    const avgStats = (troopInfo[type].baseStats.attack + troopInfo[type].baseStats.defense) * 0.5;
+                    const count = Math.floor((enemyPower * (0.1 + Math.random() * 0.3)) / avgStats);
+                    if (count > 0) {
+                        enemyTroops[type] = { count, level: Math.max(1, Math.floor(kingdomLevel * 0.7)) };
+                    }
+                });
+                
+                return { name, troops: enemyTroops };
+            };
+
+            const calculateArmyPower = (armyTroops) => {
+                let power = 0;
+                Object.entries(armyTroops).forEach(([type, troop]) => {
+                    const info = troopInfo[type];
+                    const level = troop.level;
+                    const attack = Math.floor(info.baseStats.attack * (1 + (level - 1) * 0.3));
+                    const defense = Math.floor(info.baseStats.defense * (1 + (level - 1) * 0.3));
+                    power += troop.count * (attack + defense);
+                });
+                return power;
+            };
+
+            const startBattle = () => {
+                const enemy = generateEnemy();
+                const playerPower = calculateArmyPower(troops);
+                const enemyPower = calculateArmyPower(enemy.troops);
+                
+                // Defense bonuses
+                const wallBonus = buildings.wall.level * 0.1;
+                const towerBonus = buildings.tower.level * 0.05;
+                const totalPlayerPower = playerPower * (1 + wallBonus + towerBonus);
+                
+                // Battle calculation
+                const powerRatio = totalPlayerPower / (enemyPower || 1);
+                const winChance = Math.min(0.95, Math.max(0.05, 0.5 + (powerRatio - 1) * 0.3));
+                const won = Math.random() < winChance;
+                
+                // Calculate casualties
+                let casualties = {};
+                if (won) {
+                    const lossRate = 0.1 + (1 - winChance) * 0.4;
+                    Object.entries(troops).forEach(([type, troop]) => {
+                        if (troop.count > 0) {
+                            const lost = Math.floor(troop.count * lossRate);
+                            casualties[type] = lost;
+                        }
+                    });
+                } else {
+                    const lossRate = 0.3 + (1 - winChance) * 0.4;
+                    Object.entries(troops).forEach(([type, troop]) => {
+                        if (troop.count > 0) {
+                            const lost = Math.floor(troop.count * lossRate);
+                            casualties[type] = lost;
+                        }
+                    });
+                }
+                
+                // Calculate rewards
+                let rewards = { gold: 0, wood: 0, stone: 0, food: 0 };
+                if (won) {
+                    const baseReward = enemyPower * 0.5;
+                    rewards = {
+                        gold: Math.floor(baseReward * (1 + Math.random() * 0.5)),
+                        wood: Math.floor(baseReward * 0.4 * (1 + Math.random() * 0.5)),
+                        stone: Math.floor(baseReward * 0.3 * (1 + Math.random() * 0.5)),
+                        food: Math.floor(baseReward * 0.5 * (1 + Math.random() * 0.5))
+                    };
+                }
+                
+                setBattleModal({ enemy, won, casualties, rewards, playerPower: totalPlayerPower, enemyPower });
+            };
+
+            const completeBattle = () => {
+                if (!battleModal) return;
+                
+                // Apply casualties
+                const newTroops = { ...troops };
+                Object.entries(battleModal.casualties).forEach(([type, lost]) => {
+                    newTroops[type] = {
+                        ...newTroops[type],
+                        count: Math.max(0, newTroops[type].count - lost)
+                    };
+                });
+                setTroops(newTroops);
+                
+                // Apply rewards
+                if (battleModal.won) {
+                    setGold(g => g + battleModal.rewards.gold);
+                    setWood(w => w + battleModal.rewards.wood);
+                    setStone(s => s + battleModal.rewards.stone);
+                    setFood(f => f + battleModal.rewards.food);
+                    setWins(w => w + 1);
+                } else {
+                    setLosses(l => l + 1);
+                }
+                
+                setBattleModal(null);
             };
 
             const formatNumber = (num) => {
@@ -328,10 +573,12 @@
                         if (info.production.food) foodProd += info.production.food * building.level;
                     }
                 });
-                return { goldProd, woodProd, stoneProd, foodProd: foodProd - (population * 0.3) };
+                return { goldProd, woodProd, stoneProd, foodProd: foodProd - (population * 0.5) };
             };
 
             const prod = getProduction();
+            const totalTroops = Object.values(troops).reduce((sum, t) => sum + t.count, 0);
+            const hasTroops = totalTroops > 0;
 
             return (
                 <div className="min-h-screen bg-gradient-to-br from-green-900 via-emerald-800 to-teal-900 p-2 sm:p-4">
@@ -345,7 +592,7 @@
                                 <div className="space-y-3 text-gray-800">
                                     <p>The old kingdom has fallen. Only ruins remain of what was once a glorious civilization.</p>
                                     <p>You are the last heir to the throne. Your quest: rebuild the kingdom from ashes to greatness.</p>
-                                    <p className="font-semibold">Gather resources by clicking them. Build structures. Grow your population. Defend your lands.</p>
+                                    <p className="font-semibold">Gather resources. Build structures. Train armies. Conquer enemies.</p>
                                     <p className="text-amber-900 font-bold">Will you restore the kingdom to its former glory?</p>
                                 </div>
                                 <button
@@ -353,6 +600,52 @@
                                     className="mt-6 w-full py-3 bg-gradient-to-r from-amber-600 to-yellow-600 text-white rounded-lg font-bold hover:from-amber-700 hover:to-yellow-700"
                                 >
                                     Begin Your Quest
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {battleModal && (
+                        <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4">
+                            <div className={`bg-gradient-to-br ${battleModal.won ? 'from-green-900 to-emerald-900' : 'from-red-900 to-orange-900'} rounded-lg p-6 max-w-lg border-4 ${battleModal.won ? 'border-green-500' : 'border-red-500'} text-white battle-shake`}>
+                                <h2 className="text-3xl font-bold mb-4 text-center">
+                                    {battleModal.won ? '⚔️ VICTORY! ⚔️' : '💀 DEFEAT 💀'}
+                                </h2>
+                                
+                                <div className="space-y-3 mb-4">
+                                    <div className="bg-black bg-opacity-30 p-3 rounded">
+                                        <div className="font-bold text-lg mb-2">{battleModal.enemy.name}</div>
+                                        <div className="text-sm">Enemy Power: {formatNumber(battleModal.enemyPower)}</div>
+                                        <div className="text-sm">Your Power: {formatNumber(battleModal.playerPower)}</div>
+                                    </div>
+                                    
+                                    <div className="bg-black bg-opacity-30 p-3 rounded">
+                                        <div className="font-bold mb-2">Casualties:</div>
+                                        {Object.entries(battleModal.casualties).map(([type, lost]) => (
+                                            lost > 0 && (
+                                                <div key={type} className="text-sm">
+                                                    {troopInfo[type].name}: -{lost}
+                                                </div>
+                                            )
+                                        ))}
+                                    </div>
+                                    
+                                    {battleModal.won && (
+                                        <div className="bg-black bg-opacity-30 p-3 rounded">
+                                            <div className="font-bold mb-2 text-yellow-300">Rewards:</div>
+                                            <div className="text-sm">+{formatNumber(battleModal.rewards.gold)} 💰</div>
+                                            <div className="text-sm">+{formatNumber(battleModal.rewards.wood)} 🪵</div>
+                                            <div className="text-sm">+{formatNumber(battleModal.rewards.stone)} 🗿</div>
+                                            <div className="text-sm">+{formatNumber(battleModal.rewards.food)} 🌾</div>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <button
+                                    onClick={completeBattle}
+                                    className="w-full py-3 bg-white text-gray-900 rounded-lg font-bold hover:bg-gray-200"
+                                >
+                                    Continue
                                 </button>
                             </div>
                         </div>
@@ -371,11 +664,12 @@
                                 <div className="text-right">
                                     <div className="text-xs sm:text-sm text-yellow-200">Power</div>
                                     <div className="text-lg sm:text-xl font-bold text-yellow-100">{formatNumber(totalPower)}</div>
+                                    <div className="text-xs text-green-300">{wins}W - {losses}L</div>
                                 </div>
                             </div>
 
                             <div className="mb-2 text-center text-xs text-yellow-200">
-                                💡 Tip: Click resources below to gather them manually!
+                                💡 Tip: Click resources to gather them manually!
                             </div>
                             
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
@@ -418,10 +712,35 @@
                                     Recruit ({getRecruitCost()} 🌾)
                                 </button>
                             </div>
+
+                            {buildings.barracks.level > 0 && (
+                                <div className="mt-3 bg-red-900 bg-opacity-50 p-3 rounded">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xl">⚔️</span>
+                                            <span className="text-sm font-bold text-red-100">Army: {totalTroops} troops</span>
+                                        </div>
+                                        <button
+                                            onClick={startBattle}
+                                            disabled={!hasTroops}
+                                            className={`px-4 py-2 rounded-lg font-bold text-sm ${
+                                                hasTroops
+                                                    ? 'bg-red-600 text-white hover:bg-red-700'
+                                                    : 'bg-gray-600 text-gray-400'
+                                            }`}
+                                        >
+                                            ⚔️ Attack!
+                                        </button>
+                                    </div>
+                                    <div className="text-xs text-red-200">
+                                        {hasTroops ? 'Battle enemies to gain resources!' : 'Train troops first!'}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div className="flex gap-1 mb-3 overflow-x-auto pb-2">
-                            {['resources', 'population', 'military', 'special'].map(tab => (
+                            {['resources', 'population', 'military', 'troops', 'special'].map(tab => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
@@ -437,72 +756,152 @@
                         </div>
 
                         <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-                            {Object.entries(buildingInfo)
-                                .filter(([_, info]) => info.category === activeTab || (activeTab === 'resources' && info.category === 'core'))
-                                .map(([key, info]) => {
-                                    const building = buildings[key];
-                                    const cost = getUpgradeCost(key);
-                                    const affordable = canAfford(cost);
-                                    const meetsRequirements = !info.minTownHall || buildings.townHall.level >= info.minTownHall;
-                                    const atMaxLevel = building.level >= building.maxLevel;
+                            {activeTab === 'troops' && buildings.barracks.level > 0 ? (
+                                Object.entries(troopInfo).map(([key, info]) => {
+                                    const troop = troops[key];
+                                    const stats = getTroopStats(key);
+                                    const canTrain = canTrainTroop(key);
+                                    const canUpg = canUpgradeTroop(key);
+                                    const upgCost = getTroopUpgradeCost(key);
+                                    const meetsReq = buildings.barracks.level >= info.minBarracks;
 
                                     return (
-                                        <div
-                                            key={key}
-                                            className={`bg-gradient-to-r from-gray-800 to-gray-900 rounded-lg p-3 sm:p-4 border-2 ${
-                                                building.level > 0 ? 'border-green-600' : 'border-gray-700'
-                                            }`}
-                                        >
-                                            <div className="flex items-start justify-between gap-2">
-                                                <div className="flex-1 min-w-0">
+                                        <div key={key} className="bg-gradient-to-r from-red-900 to-orange-900 rounded-lg p-3 sm:p-4 border-2 border-red-700">
+                                            <div className="flex items-start justify-between gap-2 mb-2">
+                                                <div className="flex-1">
                                                     <div className="flex items-center gap-2 mb-1">
-                                                        <span className="text-lg sm:text-xl">{info.name}</span>
-                                                        <span className="text-xs sm:text-sm bg-blue-600 text-white px-2 py-0.5 rounded">
-                                                            Lv {building.level}/{building.maxLevel}
+                                                        <span className="text-lg">{info.name}</span>
+                                                        <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded">
+                                                            Lv {troop.level}/5
+                                                        </span>
+                                                        <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded">
+                                                            {troop.count} owned
                                                         </span>
                                                     </div>
-                                                    <div className="text-xs sm:text-sm text-gray-400 mb-2">{info.desc}</div>
-                                                    
-                                                    {building.level > 0 && (
-                                                        <div className="text-xs text-green-400 mb-2">
-                                                            {info.production.gold && `+${info.production.gold * building.level} Gold/s • `}
-                                                            {info.production.wood && `+${info.production.wood * building.level} Wood/s • `}
-                                                            {info.production.stone && `+${info.production.stone * building.level} Stone/s • `}
-                                                            {info.production.food && `+${info.production.food * building.level} Food/s • `}
-                                                            {info.populationBonus && `+${info.populationBonus * building.level} Max Pop`}
-                                                        </div>
-                                                    )}
-
-                                                    {!meetsRequirements && (
-                                                        <div className="text-xs text-red-400 mb-2">
-                                                            Requires Town Hall Level {info.minTownHall}
-                                                        </div>
-                                                    )}
-
-                                                    {!atMaxLevel && (
-                                                        <div className="text-xs sm:text-sm text-gray-300">
-                                                            Cost: {cost.gold} 💰 {cost.wood} 🪵 {cost.stone} 🗿
+                                                    <div className="text-xs text-gray-300 mb-2">{info.desc}</div>
+                                                    <div className="text-xs text-yellow-300">
+                                                        ⚔️ ATK: {stats.attack} | 🛡️ DEF: {stats.defense} | ❤️ HP: {stats.health}
+                                                    </div>
+                                                    {!meetsReq && (
+                                                        <div className="text-xs text-red-300 mt-1">
+                                                            Requires Barracks Level {info.minBarracks}
                                                         </div>
                                                     )}
                                                 </div>
-
-                                                <button
-                                                    onClick={() => upgradeBuilding(key)}
-                                                    disabled={!canUpgrade(key)}
-                                                    className={`px-4 py-2 rounded-lg font-bold whitespace-nowrap text-sm ${
-                                                        atMaxLevel
-                                                            ? 'bg-gray-600 text-gray-400'
-                                                            : affordable && meetsRequirements
-                                                            ? 'bg-green-600 text-white hover:bg-green-700'
-                                                            : 'bg-gray-700 text-gray-500'
-                                                    }`}
-                                                >
-                                                    {atMaxLevel ? 'MAX' : building.level === 0 ? 'Build' : 'Upgrade'}
-                                                </button>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <div className="flex-1">
+                                                    <div className="text-xs text-gray-300 mb-1">
+                                                        Train: {info.baseCost.gold}💰 {info.baseCost.wood}🪵 {info.baseCost.food}🌾
+                                                    </div>
+                                                    <button
+                                                        onClick={() => trainTroop(key)}
+                                                        disabled={!canTrain || !meetsReq}
+                                                        className={`w-full px-3 py-2 rounded font-bold text-sm ${
+                                                            canTrain && meetsReq
+                                                                ? 'bg-green-600 text-white hover:bg-green-700'
+                                                                : 'bg-gray-700 text-gray-500'
+                                                        }`}
+                                                    >
+                                                        Train
+                                                    </button>
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="text-xs text-gray-300 mb-1">
+                                                        Upgrade: {upgCost.gold}💰 {upgCost.stone}🗿 {upgCost.food}🌾
+                                                    </div>
+                                                    <button
+                                                        onClick={() => upgradeTroop(key)}
+                                                        disabled={!canUpg || troop.level >= 5}
+                                                        className={`w-full px-3 py-2 rounded font-bold text-sm ${
+                                                            troop.level >= 5
+                                                                ? 'bg-gray-600 text-gray-400'
+                                                                : canUpg
+                                                                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                                                : 'bg-gray-700 text-gray-500'
+                                                        }`}
+                                                    >
+                                                        {troop.level >= 5 ? 'MAX' : 'Upgrade'}
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     );
-                                })}
+                                })
+                            ) : activeTab === 'troops' ? (
+                                <div className="bg-gray-800 rounded-lg p-6 text-center text-gray-400">
+                                    <div className="text-4xl mb-4">⚔️</div>
+                                    <div className="text-lg font-bold mb-2">Build a Barracks First!</div>
+                                    <div className="text-sm">You need a Barracks to train troops.</div>
+                                </div>
+                            ) : (
+                                Object.entries(buildingInfo)
+                                    .filter(([_, info]) => info.category === activeTab || (activeTab === 'resources' && info.category === 'core'))
+                                    .map(([key, info]) => {
+                                        const building = buildings[key];
+                                        const cost = getUpgradeCost(key);
+                                        const affordable = canAfford(cost);
+                                        const meetsRequirements = !info.minTownHall || buildings.townHall.level >= info.minTownHall;
+                                        const atMaxLevel = building.level >= building.maxLevel;
+
+                                        return (
+                                            <div
+                                                key={key}
+                                                className={`bg-gradient-to-r from-gray-800 to-gray-900 rounded-lg p-3 sm:p-4 border-2 ${
+                                                    building.level > 0 ? 'border-green-600' : 'border-gray-700'
+                                                }`}
+                                            >
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className="text-lg sm:text-xl">{info.name}</span>
+                                                            <span className="text-xs sm:text-sm bg-blue-600 text-white px-2 py-0.5 rounded">
+                                                                Lv {building.level}/{building.maxLevel}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-xs sm:text-sm text-gray-400 mb-2">{info.desc}</div>
+                                                        
+                                                        {building.level > 0 && (
+                                                            <div className="text-xs text-green-400 mb-2">
+                                                                {info.production.gold && `+${info.production.gold * building.level} Gold/s • `}
+                                                                {info.production.wood && `+${info.production.wood * building.level} Wood/s • `}
+                                                                {info.production.stone && `+${info.production.stone * building.level} Stone/s • `}
+                                                                {info.production.food && `+${info.production.food * building.level} Food/s • `}
+                                                                {info.populationBonus && `+${info.populationBonus * building.level} Max Pop`}
+                                                            </div>
+                                                        )}
+
+                                                        {!meetsRequirements && (
+                                                            <div className="text-xs text-red-400 mb-2">
+                                                                Requires Town Hall Level {info.minTownHall}
+                                                            </div>
+                                                        )}
+
+                                                        {!atMaxLevel && (
+                                                            <div className="text-xs sm:text-sm text-gray-300">
+                                                                Cost: {cost.gold} 💰 {cost.wood} 🪵 {cost.stone} 🗿
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <button
+                                                        onClick={() => upgradeBuilding(key)}
+                                                        disabled={!canUpgrade(key)}
+                                                        className={`px-4 py-2 rounded-lg font-bold whitespace-nowrap text-sm ${
+                                                            atMaxLevel
+                                                                ? 'bg-gray-600 text-gray-400'
+                                                                : affordable && meetsRequirements
+                                                                ? 'bg-green-600 text-white hover:bg-green-700'
+                                                                : 'bg-gray-700 text-gray-500'
+                                                        }`}
+                                                    >
+                                                        {atMaxLevel ? 'MAX' : building.level === 0 ? 'Build' : 'Upgrade'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                            )}
                         </div>
                     </div>
                 </div>
