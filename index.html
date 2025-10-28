@@ -53,17 +53,17 @@
 
             const saved = loadGame();
 
-            // INCREASED starting resources for better early game
-            const [gold, setGold] = useState(saved?.gold || 500);
-            const [wood, setWood] = useState(saved?.wood || 300);
-            const [stone, setStone] = useState(saved?.stone || 200);
-            const [food, setFood] = useState(saved?.food || 400);
+            // Balanced starting resources
+            const [gold, setGold] = useState(saved?.gold || 300);
+            const [wood, setWood] = useState(saved?.wood || 200);
+            const [stone, setStone] = useState(saved?.stone || 150);
+            const [food, setFood] = useState(saved?.food || 250);
             const [population, setPopulation] = useState(saved?.population || 0);
             const [maxPopulation, setMaxPopulation] = useState(saved?.maxPopulation || 5);
             
             const [kingdomLevel, setKingdomLevel] = useState(saved?.kingdomLevel || 1);
             const [totalPower, setTotalPower] = useState(saved?.totalPower || 0);
-            const [clickPower, setClickPower] = useState(saved?.clickPower || { gold: 5, wood: 3, stone: 2, food: 4 });
+            const [clickPower, setClickPower] = useState(saved?.clickPower || { gold: 3, wood: 2, stone: 2, food: 3 });
             
             const [buildings, setBuildings] = useState(saved?.buildings || {
                 townHall: { level: 1, maxLevel: 10 },
@@ -81,21 +81,21 @@
             const [activeTab, setActiveTab] = useState('resources');
             const [showStory, setShowStory] = useState(!saved);
 
-            // REDUCED costs and INCREASED production
+            // BALANCED costs with MODERATE production
             const buildingInfo = {
                 townHall: {
                     name: '🏰 Town Hall',
                     desc: 'The heart of your kingdom. Unlocks new buildings.',
                     category: 'core',
                     baseCost: { gold: 150, wood: 100, stone: 80 },
-                    production: { gold: 5 },
+                    production: { gold: 3 },
                 },
                 goldMine: {
                     name: '⛏️ Gold Mine',
                     desc: 'Produces gold over time.',
                     category: 'resources',
                     baseCost: { gold: 40, wood: 25, stone: 15 },
-                    production: { gold: 15 },
+                    production: { gold: 8 },
                     minTownHall: 1
                 },
                 lumberMill: {
@@ -103,7 +103,7 @@
                     desc: 'Produces wood over time.',
                     category: 'resources',
                     baseCost: { gold: 35, wood: 15, stone: 10 },
-                    production: { wood: 12 },
+                    production: { wood: 7 },
                     minTownHall: 1
                 },
                 quarry: {
@@ -111,7 +111,7 @@
                     desc: 'Produces stone over time.',
                     category: 'resources',
                     baseCost: { gold: 50, wood: 20, stone: 10 },
-                    production: { stone: 10 },
+                    production: { stone: 6 },
                     minTownHall: 2
                 },
                 farm: {
@@ -119,7 +119,7 @@
                     desc: 'Produces food for your population.',
                     category: 'resources',
                     baseCost: { gold: 40, wood: 30, stone: 10 },
-                    production: { food: 18 },
+                    production: { food: 10 },
                     minTownHall: 1
                 },
                 house: {
@@ -160,7 +160,7 @@
                     desc: 'Generates bonus gold from trade.',
                     category: 'special',
                     baseCost: { gold: 180, wood: 90, stone: 70 },
-                    production: { gold: 30 },
+                    production: { gold: 15 },
                     minTownHall: 5
                 }
             };
@@ -199,7 +199,7 @@
                         }
                     });
 
-                    const foodConsumption = population * 0.3;
+                    const foodConsumption = population * 0.5;
                     foodGen -= foodConsumption;
 
                     setGold(g => Math.max(0, g + goldGen / 10));
@@ -226,20 +226,20 @@
                 setTotalPower(power);
             }, [buildings, kingdomLevel]);
 
-            // Manual resource gathering
+            // Manual resource gathering - bonus reduced for balance
             const gatherResource = (type) => {
                 switch(type) {
                     case 'gold':
-                        setGold(g => g + clickPower.gold * (1 + buildings.goldMine.level * 0.5));
+                        setGold(g => g + clickPower.gold * (1 + buildings.goldMine.level * 0.3));
                         break;
                     case 'wood':
-                        setWood(w => w + clickPower.wood * (1 + buildings.lumberMill.level * 0.5));
+                        setWood(w => w + clickPower.wood * (1 + buildings.lumberMill.level * 0.3));
                         break;
                     case 'stone':
-                        setStone(s => s + clickPower.stone * (1 + buildings.quarry.level * 0.5));
+                        setStone(s => s + clickPower.stone * (1 + buildings.quarry.level * 0.3));
                         break;
                     case 'food':
-                        setFood(f => f + clickPower.food * (1 + buildings.farm.level * 0.5));
+                        setFood(f => f + clickPower.food * (1 + buildings.farm.level * 0.3));
                         break;
                 }
             };
@@ -249,7 +249,8 @@
                 const info = buildingInfo[buildingKey];
                 const level = building.level;
                 
-                const multiplier = Math.pow(1.4, level);
+                // Exponential scaling - gets MUCH harder as you level up
+                const multiplier = Math.pow(1.6, level);
                 return {
                     gold: Math.floor(info.baseCost.gold * multiplier),
                     wood: Math.floor((info.baseCost.wood || 0) * multiplier),
@@ -298,10 +299,16 @@
 
             const recruitWorker = () => {
                 if (population >= maxPopulation) return;
-                if (food < 30) return;
+                // Recruitment gets more expensive as population grows
+                const recruitCost = 30 + (population * 15);
+                if (food < recruitCost) return;
                 
-                setFood(f => f - 30);
+                setFood(f => f - recruitCost);
                 setPopulation(p => p + 1);
+            };
+
+            const getRecruitCost = () => {
+                return 30 + (population * 15);
             };
 
             const formatNumber = (num) => {
@@ -401,14 +408,14 @@
                                 </div>
                                 <button
                                     onClick={recruitWorker}
-                                    disabled={population >= maxPopulation || food < 30}
+                                    disabled={population >= maxPopulation || food < getRecruitCost()}
                                     className={`px-3 py-1 rounded font-semibold text-xs sm:text-sm ${
-                                        population >= maxPopulation || food < 30
+                                        population >= maxPopulation || food < getRecruitCost()
                                             ? 'bg-gray-600 text-gray-400'
                                             : 'bg-purple-600 text-white hover:bg-purple-700'
                                     }`}
                                 >
-                                    Recruit (30 🌾)
+                                    Recruit ({getRecruitCost()} 🌾)
                                 </button>
                             </div>
                         </div>
