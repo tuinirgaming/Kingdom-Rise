@@ -19,6 +19,12 @@
         .no-tap-highlight {
             -webkit-tap-highlight-color: transparent;
         }
+        .resource-btn {
+            transition: transform 0.1s;
+        }
+        .resource-btn:active {
+            transform: scale(0.95);
+        }
     </style>
 </head>
 <body class="no-tap-highlight">
@@ -31,12 +37,10 @@
     <script type="text/babel">
         const { useState, useEffect, useCallback } = React;
 
-        // Simple SVG Icons as components
         const Crown = () => <span className="inline-block">👑</span>;
         const Users = () => <span className="inline-block">👥</span>;
 
         function KingdomRise() {
-            // Load game state
             const loadGame = () => {
                 try {
                     const saved = localStorage.getItem('kingdomRiseGame');
@@ -49,20 +53,18 @@
 
             const saved = loadGame();
 
-            // Resources
-            const [gold, setGold] = useState(saved?.gold || 100);
-            const [wood, setWood] = useState(saved?.wood || 50);
-            const [stone, setStone] = useState(saved?.stone || 30);
-            const [food, setFood] = useState(saved?.food || 80);
+            // INCREASED starting resources for better early game
+            const [gold, setGold] = useState(saved?.gold || 500);
+            const [wood, setWood] = useState(saved?.wood || 300);
+            const [stone, setStone] = useState(saved?.stone || 200);
+            const [food, setFood] = useState(saved?.food || 400);
             const [population, setPopulation] = useState(saved?.population || 0);
             const [maxPopulation, setMaxPopulation] = useState(saved?.maxPopulation || 5);
             
-            // Game progress
             const [kingdomLevel, setKingdomLevel] = useState(saved?.kingdomLevel || 1);
             const [totalPower, setTotalPower] = useState(saved?.totalPower || 0);
-            const [achievements, setAchievements] = useState(saved?.achievements || []);
+            const [clickPower, setClickPower] = useState(saved?.clickPower || { gold: 5, wood: 3, stone: 2, food: 4 });
             
-            // Buildings
             const [buildings, setBuildings] = useState(saved?.buildings || {
                 townHall: { level: 1, maxLevel: 10 },
                 goldMine: { level: 0, maxLevel: 10 },
@@ -79,53 +81,52 @@
             const [activeTab, setActiveTab] = useState('resources');
             const [showStory, setShowStory] = useState(!saved);
 
-            // Building definitions
+            // REDUCED costs and INCREASED production
             const buildingInfo = {
                 townHall: {
                     name: '🏰 Town Hall',
                     desc: 'The heart of your kingdom. Unlocks new buildings.',
                     category: 'core',
-                    baseCost: { gold: 200, wood: 150, stone: 100 },
-                    production: {},
-                    unlocks: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+                    baseCost: { gold: 150, wood: 100, stone: 80 },
+                    production: { gold: 5 },
                 },
                 goldMine: {
                     name: '⛏️ Gold Mine',
                     desc: 'Produces gold over time.',
                     category: 'resources',
-                    baseCost: { gold: 50, wood: 30, stone: 20 },
-                    production: { gold: 10 },
+                    baseCost: { gold: 40, wood: 25, stone: 15 },
+                    production: { gold: 15 },
                     minTownHall: 1
                 },
                 lumberMill: {
                     name: '🪵 Lumber Mill',
                     desc: 'Produces wood over time.',
                     category: 'resources',
-                    baseCost: { gold: 40, wood: 20, stone: 15 },
-                    production: { wood: 8 },
+                    baseCost: { gold: 35, wood: 15, stone: 10 },
+                    production: { wood: 12 },
                     minTownHall: 1
                 },
                 quarry: {
                     name: '🗿 Quarry',
                     desc: 'Produces stone over time.',
                     category: 'resources',
-                    baseCost: { gold: 60, wood: 25, stone: 10 },
-                    production: { stone: 6 },
+                    baseCost: { gold: 50, wood: 20, stone: 10 },
+                    production: { stone: 10 },
                     minTownHall: 2
                 },
                 farm: {
                     name: '🌾 Farm',
                     desc: 'Produces food for your population.',
                     category: 'resources',
-                    baseCost: { gold: 45, wood: 35, stone: 10 },
-                    production: { food: 12 },
+                    baseCost: { gold: 40, wood: 30, stone: 10 },
+                    production: { food: 18 },
                     minTownHall: 1
                 },
                 house: {
                     name: '🏘️ House',
                     desc: 'Increases population capacity by 5.',
                     category: 'population',
-                    baseCost: { gold: 30, wood: 40, stone: 20 },
+                    baseCost: { gold: 25, wood: 35, stone: 15 },
                     production: {},
                     populationBonus: 5,
                     minTownHall: 1
@@ -134,7 +135,7 @@
                     name: '⚔️ Barracks',
                     desc: 'Train troops to defend your kingdom.',
                     category: 'military',
-                    baseCost: { gold: 150, wood: 80, stone: 100 },
+                    baseCost: { gold: 120, wood: 70, stone: 80 },
                     production: {},
                     minTownHall: 3
                 },
@@ -142,7 +143,7 @@
                     name: '🛡️ Wall',
                     desc: 'Increases defense rating.',
                     category: 'military',
-                    baseCost: { gold: 100, wood: 60, stone: 120 },
+                    baseCost: { gold: 80, wood: 50, stone: 100 },
                     production: {},
                     minTownHall: 2
                 },
@@ -150,7 +151,7 @@
                     name: '🗼 Watch Tower',
                     desc: 'Provides additional defense.',
                     category: 'military',
-                    baseCost: { gold: 120, wood: 50, stone: 100 },
+                    baseCost: { gold: 100, wood: 40, stone: 80 },
                     production: {},
                     minTownHall: 4
                 },
@@ -158,8 +159,8 @@
                     name: '🏪 Market',
                     desc: 'Generates bonus gold from trade.',
                     category: 'special',
-                    baseCost: { gold: 200, wood: 100, stone: 80 },
-                    production: { gold: 20 },
+                    baseCost: { gold: 180, wood: 90, stone: 70 },
+                    production: { gold: 30 },
                     minTownHall: 5
                 }
             };
@@ -170,7 +171,7 @@
                     try {
                         localStorage.setItem('kingdomRiseGame', JSON.stringify({
                             gold, wood, stone, food, population, maxPopulation,
-                            kingdomLevel, totalPower, achievements, buildings
+                            kingdomLevel, totalPower, buildings, clickPower
                         }));
                     } catch (e) {
                         console.error('Save failed:', e);
@@ -178,7 +179,7 @@
                 };
                 const interval = setInterval(save, 3000);
                 return () => clearInterval(interval);
-            }, [gold, wood, stone, food, population, maxPopulation, kingdomLevel, totalPower, achievements, buildings]);
+            }, [gold, wood, stone, food, population, maxPopulation, kingdomLevel, totalPower, buildings, clickPower]);
 
             // Resource production
             useEffect(() => {
@@ -198,8 +199,7 @@
                         }
                     });
 
-                    // Population consumes food
-                    const foodConsumption = population * 0.5;
+                    const foodConsumption = population * 0.3;
                     foodGen -= foodConsumption;
 
                     setGold(g => Math.max(0, g + goldGen / 10));
@@ -211,14 +211,12 @@
                 return () => clearInterval(interval);
             }, [buildings, population]);
 
-            // Calculate max population
             useEffect(() => {
                 const basePopulation = 5;
                 const houseBonus = buildings.house.level * 5;
                 setMaxPopulation(basePopulation + houseBonus);
             }, [buildings.house.level]);
 
-            // Calculate total power
             useEffect(() => {
                 let power = 0;
                 Object.entries(buildings).forEach(([key, building]) => {
@@ -228,12 +226,30 @@
                 setTotalPower(power);
             }, [buildings, kingdomLevel]);
 
+            // Manual resource gathering
+            const gatherResource = (type) => {
+                switch(type) {
+                    case 'gold':
+                        setGold(g => g + clickPower.gold * (1 + buildings.goldMine.level * 0.5));
+                        break;
+                    case 'wood':
+                        setWood(w => w + clickPower.wood * (1 + buildings.lumberMill.level * 0.5));
+                        break;
+                    case 'stone':
+                        setStone(s => s + clickPower.stone * (1 + buildings.quarry.level * 0.5));
+                        break;
+                    case 'food':
+                        setFood(f => f + clickPower.food * (1 + buildings.farm.level * 0.5));
+                        break;
+                }
+            };
+
             const getUpgradeCost = (buildingKey) => {
                 const building = buildings[buildingKey];
                 const info = buildingInfo[buildingKey];
                 const level = building.level;
                 
-                const multiplier = Math.pow(1.5, level);
+                const multiplier = Math.pow(1.4, level);
                 return {
                     gold: Math.floor(info.baseCost.gold * multiplier),
                     wood: Math.floor((info.baseCost.wood || 0) * multiplier),
@@ -282,9 +298,9 @@
 
             const recruitWorker = () => {
                 if (population >= maxPopulation) return;
-                if (food < 50) return;
+                if (food < 30) return;
                 
-                setFood(f => f - 50);
+                setFood(f => f - 30);
                 setPopulation(p => p + 1);
             };
 
@@ -305,7 +321,7 @@
                         if (info.production.food) foodProd += info.production.food * building.level;
                     }
                 });
-                return { goldProd, woodProd, stoneProd, foodProd: foodProd - (population * 0.5) };
+                return { goldProd, woodProd, stoneProd, foodProd: foodProd - (population * 0.3) };
             };
 
             const prod = getProduction();
@@ -322,7 +338,7 @@
                                 <div className="space-y-3 text-gray-800">
                                     <p>The old kingdom has fallen. Only ruins remain of what was once a glorious civilization.</p>
                                     <p>You are the last heir to the throne. Your quest: rebuild the kingdom from ashes to greatness.</p>
-                                    <p className="font-semibold">Gather resources. Construct buildings. Grow your population. Defend your lands.</p>
+                                    <p className="font-semibold">Gather resources by clicking them. Build structures. Grow your population. Defend your lands.</p>
                                     <p className="text-amber-900 font-bold">Will you restore the kingdom to its former glory?</p>
                                 </div>
                                 <button
@@ -336,7 +352,6 @@
                     )}
 
                     <div className="max-w-6xl mx-auto">
-                        {/* Header */}
                         <div className="bg-gradient-to-r from-amber-900 to-yellow-800 rounded-lg shadow-lg p-3 sm:p-4 mb-3 border-2 border-yellow-600">
                             <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-2">
@@ -351,28 +366,32 @@
                                     <div className="text-lg sm:text-xl font-bold text-yellow-100">{formatNumber(totalPower)}</div>
                                 </div>
                             </div>
+
+                            <div className="mb-2 text-center text-xs text-yellow-200">
+                                💡 Tip: Click resources below to gather them manually!
+                            </div>
                             
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                                <div className="bg-yellow-700 bg-opacity-50 p-2 rounded">
-                                    <div className="text-xs text-yellow-200">Gold</div>
-                                    <div className="text-sm sm:text-lg font-bold text-yellow-100">{formatNumber(gold)}</div>
-                                    <div className="text-xs text-green-300">+{prod.goldProd.toFixed(1)}/s</div>
-                                </div>
-                                <div className="bg-yellow-700 bg-opacity-50 p-2 rounded">
-                                    <div className="text-xs text-yellow-200">Wood</div>
-                                    <div className="text-sm sm:text-lg font-bold text-yellow-100">{formatNumber(wood)}</div>
-                                    <div className="text-xs text-green-300">+{prod.woodProd.toFixed(1)}/s</div>
-                                </div>
-                                <div className="bg-yellow-700 bg-opacity-50 p-2 rounded">
-                                    <div className="text-xs text-yellow-200">Stone</div>
-                                    <div className="text-sm sm:text-lg font-bold text-yellow-100">{formatNumber(stone)}</div>
-                                    <div className="text-xs text-green-300">+{prod.stoneProd.toFixed(1)}/s</div>
-                                </div>
-                                <div className="bg-yellow-700 bg-opacity-50 p-2 rounded">
-                                    <div className="text-xs text-yellow-200">Food</div>
-                                    <div className="text-sm sm:text-lg font-bold text-yellow-100">{formatNumber(food)}</div>
-                                    <div className="text-xs text-green-300">+{prod.foodProd.toFixed(1)}/s</div>
-                                </div>
+                                <button onClick={() => gatherResource('gold')} className="resource-btn bg-yellow-600 hover:bg-yellow-500 p-2 rounded cursor-pointer">
+                                    <div className="text-xs text-yellow-100">Gold</div>
+                                    <div className="text-sm sm:text-lg font-bold text-white">{formatNumber(gold)}</div>
+                                    <div className="text-xs text-green-200">+{prod.goldProd.toFixed(1)}/s</div>
+                                </button>
+                                <button onClick={() => gatherResource('wood')} className="resource-btn bg-yellow-600 hover:bg-yellow-500 p-2 rounded cursor-pointer">
+                                    <div className="text-xs text-yellow-100">Wood</div>
+                                    <div className="text-sm sm:text-lg font-bold text-white">{formatNumber(wood)}</div>
+                                    <div className="text-xs text-green-200">+{prod.woodProd.toFixed(1)}/s</div>
+                                </button>
+                                <button onClick={() => gatherResource('stone')} className="resource-btn bg-yellow-600 hover:bg-yellow-500 p-2 rounded cursor-pointer">
+                                    <div className="text-xs text-yellow-100">Stone</div>
+                                    <div className="text-sm sm:text-lg font-bold text-white">{formatNumber(stone)}</div>
+                                    <div className="text-xs text-green-200">+{prod.stoneProd.toFixed(1)}/s</div>
+                                </button>
+                                <button onClick={() => gatherResource('food')} className="resource-btn bg-yellow-600 hover:bg-yellow-500 p-2 rounded cursor-pointer">
+                                    <div className="text-xs text-yellow-100">Food</div>
+                                    <div className="text-sm sm:text-lg font-bold text-white">{formatNumber(food)}</div>
+                                    <div className="text-xs text-green-200">+{prod.foodProd.toFixed(1)}/s</div>
+                                </button>
                             </div>
 
                             <div className="mt-3 flex items-center justify-between bg-purple-900 bg-opacity-50 p-2 rounded">
@@ -382,19 +401,18 @@
                                 </div>
                                 <button
                                     onClick={recruitWorker}
-                                    disabled={population >= maxPopulation || food < 50}
+                                    disabled={population >= maxPopulation || food < 30}
                                     className={`px-3 py-1 rounded font-semibold text-xs sm:text-sm ${
-                                        population >= maxPopulation || food < 50
+                                        population >= maxPopulation || food < 30
                                             ? 'bg-gray-600 text-gray-400'
                                             : 'bg-purple-600 text-white hover:bg-purple-700'
                                     }`}
                                 >
-                                    Recruit (50 🌾)
+                                    Recruit (30 🌾)
                                 </button>
                             </div>
                         </div>
 
-                        {/* Tabs */}
                         <div className="flex gap-1 mb-3 overflow-x-auto pb-2">
                             {['resources', 'population', 'military', 'special'].map(tab => (
                                 <button
@@ -411,7 +429,6 @@
                             ))}
                         </div>
 
-                        {/* Buildings */}
                         <div className="space-y-2 max-h-[60vh] overflow-y-auto">
                             {Object.entries(buildingInfo)
                                 .filter(([_, info]) => info.category === activeTab || (activeTab === 'resources' && info.category === 'core'))
